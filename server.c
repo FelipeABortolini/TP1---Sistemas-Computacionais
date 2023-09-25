@@ -1,17 +1,30 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <netinet/in.h>
 
 #define BUFFER_SIZE 1024
 #define PORT 8080
 #define MAX_CLIENTS 10
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+double perform_operation(const char *operation, double a, double b) {
+    if (strcmp(operation, "add") == 0) {
+        return a + b;
+    } else if (strcmp(operation, "subtract") == 0) {
+        return a - b;
+    } else if (strcmp(operation, "multiply") == 0) {
+        return a * b;
+    } else if (strcmp(operation, "divide") == 0) {
+        return a / b;
+    }
+
+    return 0;
+}
 
 void *handle_client(void *arg) {
     int client_sockfd = *(int *)arg;
@@ -26,7 +39,20 @@ void *handle_client(void *arg) {
     }
 
     // Process request and send response
-    // Implement your logic here
+    char operation[32];
+    double a, b;
+    sscanf(buffer, "%s %lf %lf", operation, &a, &b);
+    printf("Server received request: %s %.2lf %.2lf\n", operation, a, b);
+
+    double result = perform_operation(operation, a, b);
+
+    // Send the result back to the client
+    snprintf(buffer, BUFFER_SIZE, "%.2lf", result);
+    if (send(client_sockfd, buffer, strlen(buffer) + 1, 0) < 0) {
+        perror("Error sending result");
+        close(client_sockfd);
+        pthread_exit(NULL);
+    }
 
     // Close connection
     close(client_sockfd);
@@ -43,7 +69,7 @@ int main() {
     server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_sockfd < 0) {
         perror("Error creating socket");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     // Configure server address
@@ -55,13 +81,13 @@ int main() {
     // Bind socket to address
     if (bind(server_sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Error binding socket");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     // Listen for connections
-    if (listen(server_sockfd, MAX_CLIENTS) < 0) {
+    if (listen(server_sockfd, 5) < 0) {
         perror("Error listening for connections");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     printf("Server listening on port %d...\n", PORT);
@@ -85,4 +111,3 @@ int main() {
 
     return 0;
 }
-
