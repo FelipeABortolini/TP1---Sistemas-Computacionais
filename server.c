@@ -12,8 +12,8 @@
 #define PORT 8080
 #define MAX_CLIENTS 10
 
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_workers = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_tid = PTHREAD_MUTEX_INITIALIZER;
 struct worker_state *workers_list;
 int tamanho_atual_workers = 0;
 
@@ -46,14 +46,13 @@ void *handle_client(void *arg) {
         if(strcmp(buffer, "") == 0){
             memset(buffer, 0, BUFFER_SIZE);
             snprintf(buffer, BUFFER_SIZE, "quit");
-            printf("%s - %i\n", buffer, client_sockfd);
             if (send(client_sockfd, buffer, strlen(buffer) + 1, 0) < 0) {
                 perror("Erro ao enviar resultado ao cliente.\n");
                 close(client_sockfd);
                 pthread_exit(NULL);
             }
         } else {
-            pthread_mutex_lock(&mutex1);
+            pthread_mutex_lock(&mutex_workers);
             for(i = 0; i < tamanho_atual_workers; i++) {
                 if(available_worker_sock_id < 0) {
                     if(workers_list[i].ocioso) {
@@ -64,7 +63,7 @@ void *handle_client(void *arg) {
                     }
                 }
             }
-            pthread_mutex_unlock(&mutex1);
+            pthread_mutex_unlock(&mutex_workers);
 
             if(available_worker_sock_id < 0){
                 // Envia resultado de volta ao cliente
@@ -73,22 +72,28 @@ void *handle_client(void *arg) {
                 if (send(client_sockfd, buffer, strlen(buffer) + 1, 0) < 0) {
                     perror("Erro ao enviar informação de sistema ocupado para cliente.\n");
                 }
-                close(client_sockfd);
                 printf("Conexão com cliente %i encerrada por falta de workers disponíveis.\n", client_sockfd);
 
-                pthread_mutex_lock(&mutex2);
+                pthread_mutex_lock(&mutex_tid);
                 pthread_detach(*(tid + sizeof(pthread_t) * tamanho_atual_tid));
                 tamanho_atual_tid--;
                 tid = (pthread_t *)realloc(tid, tamanho_atual_tid * sizeof(pthread_t));
-                pthread_mutex_unlock(&mutex2);
+                pthread_mutex_unlock(&mutex_tid);
 
+                pthread_mutex_lock(&mutex_workers);
+                workers_list[worker_index_list].ocioso = true;
+                pthread_mutex_unlock(&mutex_workers);
+                
+                // printf("-----------------------------------teste--------------------------------------");
+
+                close(client_sockfd);
                 pthread_exit(NULL);
             }
             // Processa a requisição e envia o resultado
             char operation[32];
             double a, b;
             sscanf(buffer, "%s %lf %lf", operation, &a, &b);
-            printf("Servidor recebeu requisição: %s %.2lf %.2lf - %i\n", operation, a, b, client_sockfd);
+            printf("Servidor recebeu requisição: %s %.2lf %.2lf\n", operation, a, b);
 
             memset(buffer, 0, BUFFER_SIZE);
             snprintf(buffer, BUFFER_SIZE, "%s %.2lf %.2lf\n", operation, a, b);
@@ -104,11 +109,11 @@ void *handle_client(void *arg) {
                 pthread_exit(NULL);
             }
 
-            sleep(0.1);
+            // sleep(1);
 
-            pthread_mutex_lock(&mutex1);
+            pthread_mutex_lock(&mutex_workers);
             workers_list[worker_index_list].ocioso = true;
-            pthread_mutex_unlock(&mutex1);
+            pthread_mutex_unlock(&mutex_workers);
 
             // Envia resultado de volta ao cliente
             memset(buffer, 0, BUFFER_SIZE);
@@ -121,7 +126,6 @@ void *handle_client(void *arg) {
             }
         }
         close(client_sockfd);
-        printf("saindo thread.\n");
         pthread_exit(NULL);
     }
 }
