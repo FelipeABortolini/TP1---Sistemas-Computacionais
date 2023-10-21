@@ -75,7 +75,6 @@ void *handle_client(void *arg) {
                 printf("Conexão com cliente %i encerrada por falta de workers disponíveis.\n", client_sockfd);
 
                 pthread_mutex_lock(&mutex_tid);
-                pthread_detach(*(tid + sizeof(pthread_t) * tamanho_atual_tid));
                 tamanho_atual_tid--;
                 tid = (pthread_t *)realloc(tid, tamanho_atual_tid * sizeof(pthread_t));
                 pthread_mutex_unlock(&mutex_tid);
@@ -84,8 +83,6 @@ void *handle_client(void *arg) {
                 workers_list[worker_index_list].ocioso = true;
                 pthread_mutex_unlock(&mutex_workers);
                 
-                // printf("-----------------------------------teste--------------------------------------");
-
                 close(client_sockfd);
                 pthread_exit(NULL);
             }
@@ -108,8 +105,6 @@ void *handle_client(void *arg) {
                 close(client_sockfd);
                 pthread_exit(NULL);
             }
-
-            // sleep(1);
 
             pthread_mutex_lock(&mutex_workers);
             workers_list[worker_index_list].ocioso = true;
@@ -188,16 +183,24 @@ int main() {
         }
 
         if (strcmp(identification, "client") == 0) {
-            printf("Comunicação estabelecida com cliente %s:%d - %i\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port), sockfd);
+            printf("Comunicação estabelecida com cliente %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            int *new_sockfd = (int *)malloc(sizeof(int));
+            if (new_sockfd == NULL) {
+                perror("Erro ao alocar memória para novo socket.");
+                close(sockfd);
+                continue;
+            }
+            *new_sockfd = sockfd;
+
             tamanho_atual_tid++;
             tid = (pthread_t *)realloc(tid, tamanho_atual_tid * sizeof(pthread_t));
             if (tid == NULL) {
                 perror("Erro ao realocar array de threads");
-                close(sockfd);  // Fecha o socket em caso de erro
+                free(new_sockfd);  // Libera a memória alocada para o novo socket
+                close(sockfd);     // Fecha o socket em caso de erro
                 exit(EXIT_FAILURE);
             }
-            pthread_create(&tid[tamanho_atual_tid-1], NULL, handle_client, &sockfd);
-            
+            pthread_create(&tid[tamanho_atual_tid-1], NULL, handle_client, new_sockfd);
         } else if (strcmp(identification, "worker") == 0) {
             printf("Comunicação estabelecida com worker %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
             tamanho_atual_workers++;
